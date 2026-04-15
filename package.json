@@ -1,0 +1,13 @@
+{
+  "name": "tanooki-remotion-projects",
+  "version": "0.0.1",
+  "description": "Monorepo for Remotion motion graphics projects",
+  "private": true,
+  "workspaces": [
+    "projects/*"
+  ],
+  "scripts": {
+    "dev": "echo 'Run: cd projects/<name> && npm run dev'",
+    "upgrade-all": "npm --workspaces exec remotion upgrade"
+  }
+}

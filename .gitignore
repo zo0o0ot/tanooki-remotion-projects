@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Remotion — never commit these
+.remotion/
+out/
+build/
+
+# Rendered output — large binary files
+*.mp4
+*.webm
+*.mov
+*.prores
+
+# Environment variables
+.env
+.env.local
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/

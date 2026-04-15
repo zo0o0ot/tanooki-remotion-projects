@@ -1,0 +1,24 @@
+dist
+.env
+
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Remotion Cache & Output
+.remotion/         # This is the big one; never version this.
+out/               # Your render folder
+*.mp4              # Unless you explicitly want to track the result
+*.webm
+
+# AI Agents (Optional)
+# Many devs now version .antigravity/skills but ignore the agent logs
+.antigravity/logs/
+.claude/history/
+
+# OS/IDEs
+.DS_Store
+.vscode/
+.idea/
