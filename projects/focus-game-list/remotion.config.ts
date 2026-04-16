@@ -4,6 +4,7 @@
  */
 
 import { Config } from "@remotion/cli/config";
+import { enableTailwind } from "@remotion/tailwind-v4";
 import os from "os";
 
 // ---------------------------------------------------------------------------
@@ -51,3 +52,10 @@ Config.setVideoImageFormat("png");
 // General
 // ---------------------------------------------------------------------------
 Config.setOverwriteOutput(true);
+
+// ---------------------------------------------------------------------------
+// Tailwind v4
+// ---------------------------------------------------------------------------
+Config.overrideWebpackConfig((config) => {
+  return enableTailwind(config);
+});

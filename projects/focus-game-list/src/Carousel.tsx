@@ -1,78 +1,119 @@
-import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Easing, Img, staticFile, useCurrentFrame } from "remotion";
 import { GAMES } from "./games";
 
-const CARD_W = 380;
-const CARD_H = 214; // 16:9
-const CARD_GAP = 32;
-const CARD_STRIDE = CARD_W + CARD_GAP;
+const CARD_W = 460;
+const CARD_H = 215;
 
-// How many frames each card is the "active" center card before advancing
-const FRAMES_PER_CARD = 45;
+// Cylinder geometry.
+// Minimum radius for zero screen-space overlap with 19 cards of width 460px:
+//   R > (CARD_W/2) / tan(π/N) = 230 / tan(π/19) ≈ 1378px
+// 1420 gives a comfortable buffer above the minimum.
+const RADIUS = 1420;
+
+// Perspective depth. With the center card sitting at z=RADIUS, the apparent scale factor
+// is P/(P-R). At P=2100 and R=1300: 2100/800 = 2.625×, so 460px → ~1207px apparent width
+// (63% of the 1920px frame). Increase P to shrink the center card; decrease to grow it.
+const PERSPECTIVE = 2100;
+
+const ANGLE_PER_CARD = 360 / GAMES.length; // ≈ 21.18° between adjacent cards
+
+const CARD_Y_OFFSET = -30; // px above vertical center
+
+export const FRAMES_PER_CARD = 50;
+export const CAROUSEL_HOLD = 50;
+export const CAROUSEL_DURATION = GAMES.length * FRAMES_PER_CARD + CAROUSEL_HOLD;
 
 export const Carousel: React.FC = () => {
   const frame = useCurrentFrame();
-  const { fps, width } = useVideoConfig();
 
-  // Smoothly advance through each card
-  const rawIndex = frame / FRAMES_PER_CARD;
-  const targetIndex = Math.min(rawIndex, GAMES.length - 1);
-  const scrollX = spring({
-    frame,
-    fps,
-    from: 0,
-    to: targetIndex * CARD_STRIDE,
-    config: { damping: 28, stiffness: 120, mass: 1 },
-  });
+  const rawProgress = Math.min(frame / FRAMES_PER_CARD, GAMES.length - 1);
+  const activeIndex = Math.floor(rawProgress);
+  const fraction = rawProgress - activeIndex;
+  const easedFraction = Easing.inOut(Easing.cubic)(fraction);
+  const smoothProgress = Math.min(activeIndex + easedFraction, GAMES.length - 1);
 
-  const centerX = width / 2;
+  // The entire cylinder rotates; the active card is always brought to the front.
+  const cylinderRotation = -smoothProgress * ANGLE_PER_CARD;
 
   return (
-    <AbsoluteFill className="bg-zinc-950 items-center justify-center">
+    <AbsoluteFill
+      style={{
+        background:
+          "radial-gradient(ellipse 120% 80% at 50% 40%, #282828 0%, #0a0a0a 100%)",
+      }}
+    >
+      {/* Perspective container */}
       <div
         style={{
           position: "absolute",
-          display: "flex",
-          alignItems: "center",
-          top: "50%",
-          left: centerX - scrollX,
-          transform: "translateY(-50%)",
-          gap: CARD_GAP,
+          inset: 0,
+          perspective: PERSPECTIVE,
+          perspectiveOrigin: `50% calc(50% + ${CARD_Y_OFFSET}px)`,
         }}
       >
-        {GAMES.map((game, i) => {
-          const distFromCenter = (i * CARD_STRIDE - scrollX) / CARD_STRIDE;
-          const absD = Math.abs(distFromCenter);
+        {/* Cylinder pivot — centered on screen, rotates to bring active card forward */}
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: `calc(50% + ${CARD_Y_OFFSET}px)`,
+            transformStyle: "preserve-3d",
+            transform: `rotateY(${cylinderRotation}deg)`,
+          }}
+        >
+          {GAMES.map((game, i) => {
+            const angle = i * ANGLE_PER_CARD;
 
-          const scale = interpolate(absD, [0, 1, 2], [1.15, 0.9, 0.75], {
-            extrapolateRight: "clamp",
-          });
-          const opacity = interpolate(absD, [0, 1.5, 2.5], [1, 0.6, 0.2], {
-            extrapolateRight: "clamp",
-          });
+            // Compute how directly this card faces the viewer in world space.
+            // cylinderRotation rotates the whole cylinder, so the card's world angle is:
+            const worldAngle = angle + cylinderRotation;
+            // Normalize to [0, 360) then fold to [0, 180] — 0° = facing viewer, 180° = facing away.
+            const normalized = ((worldAngle % 360) + 360) % 360;
+            const facingAngle = normalized > 180 ? 360 - normalized : normalized;
+            // cos(facingAngle): 1 at 0° (directly facing), 0 at 90° (edge-on), negative past 90°.
+            // backfaceVisibility:hidden already hides >90° cards, but opacity=0 at exactly 90°
+            // prevents any single-frame flash at the hard-cull boundary.
+            const opacity = Math.max(0, Math.cos((facingAngle * Math.PI) / 180));
 
-          return (
-            <div
-              key={i}
-              style={{
-                width: CARD_W,
-                height: CARD_H,
-                flexShrink: 0,
-                borderRadius: 10,
-                overflow: "hidden",
-                transform: `scale(${scale})`,
-                opacity,
-                boxShadow: absD < 0.3 ? "0 0 40px rgba(255,255,255,0.15)" : "none",
-                transition: "box-shadow 0.1s",
-              }}
-            >
-              <Img
-                src={staticFile(`images/${game.image}`)}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            </div>
-          );
-        })}
+            return (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  width: CARD_W,
+                  height: CARD_H,
+                  marginLeft: -CARD_W / 2,
+                  marginTop: -CARD_H / 2,
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  // Each card sits on the cylinder surface, facing outward.
+                  // rotateY positions it at the correct angle; translateZ pushes it to the rim.
+                  transform: `rotateY(${angle}deg) translateZ(${RADIUS}px)`,
+                  backfaceVisibility: "hidden",
+                  opacity,
+                  boxShadow: "0 16px 60px rgba(0,0,0,0.8)",
+                }}
+              >
+                <Img
+                  src={staticFile(`images/${game.image}`)}
+                  style={{ width: "100%", height: "100%", objectFit: "fill" }}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Vignette */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse 85% 75% at 50% 48%, transparent 25%, rgba(0,0,0,0.65) 100%)",
+          pointerEvents: "none",
+        }}
+      />
     </AbsoluteFill>
   );
 };
